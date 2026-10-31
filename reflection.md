@@ -44,13 +44,13 @@ The design changed during implementation in the following ways:
     
     **Reason:** For the scope of this project, a full Constraints class felt like over-engineering. The critical constraints (time and priority) are naturally attributes of the Task itself or simple integer values related to the time budget, making a separate class unnecessary.
 
-3. Implementation of `__lt__` in Task
+3. Transition to Contextual Sorting (sort_key & lambda)
 
-    **Initial Concept:** The Task class would have a `sort_by_priority()` method that would manually order the list.
+    **Initial Concept:** The Task class would implement the __lt__ method to define a single, default sorting order based on priority (and time as a tie-breaker).
     
-    **Change:** I implemented the `__lt__` (less than) magic method directly within the Task class.
+    **Change:** Instead of implementing __lt__ directly, which would hard-code the sorting logic into the class, I decided to use custom sort_key tuples and inline lambda functions in the Scheduler class. This allows for flexible, context-aware sorting without modifying the Task class itself (sort_tasks_by_time and generate_plan).
     
-    **Reason:** This allows Python's built-in `sort()` method to work seamlessly with Task objects. The logic `self.priority < other.priority` automatically sorts tasks from highest priority to lowest (assuming lower numbers mean higher priority, which I inverted for the UI), making the scheduling code cleaner and more Pythonic.
+    **Reason:** This approach is more flexible and follows the principle of separation of concerns. The Task class now represents the data structure, while the Scheduler class handles the sorting logic. The sort_key and lambda functions allow for dynamic sorting based on different criteria (e.g., time of day, priority, duration) without cluttering the Task class with comparison methods.
 
 ---
 
@@ -112,11 +112,11 @@ One key tradeoff is that the scheduler uses a **First-Fit Greedy Placement strat
 
 **AI Suggestion:** Initial design draft for Task.__lt__ (Comparison)
 
-**Context:** AI proposed defining __lt__ to enforce "Priority High < Medium < Low" using string comparison.
+**Context:** AI proposed defining __lt__ to encapsulate priority sorting directly within the Task model to keep the execution code clean.
 
-**Refusal:** Accepted the structure but implemented the inverse logic (self.priority < other.priority) to match numerical sorting standards (where lower numbers typically represent higher priority).
+**Refusal:** Rejected the use of __lt__ entirely in favor of context-specific lambda and sort_key functions injected at the controller level.
 
-**Reason:** It aligns with standard object comparison logic and avoids "magic" string sorting, making the code more conventional and easier to debug for other Python developers.
+**Reason:** While __lt__ adheres tightly to OOP encapsulation, it restricts the object to a single-dimensional sort. Recognizing that collision-detection and gap-filling require entirely different multi-variable sorting hierarchies, I determined that injecting the logic at the execution layer was the superior architectural tradeoff.
 
 **d. How I evaluated and verified what the AI suggested?**
 

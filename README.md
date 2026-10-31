@@ -2,6 +2,20 @@
 
 PawPal+ is a Streamlit and CLI-powered scheduling assistant designed to help busy pet owners maintain consistency in their companion's care. By analyzing daily time constraints, preferred windows, and precise time blocks, PawPal+ generates an optimized daily care plan and provides clear explanations of its scheduling choices.
 
+A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+
+- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
+- Consider constraints (time available, priority, owner preferences)
+- Produce a daily plan and explain why it chose that plan
+
+PawPal+ app allows a user to:
+
+- Enter basic owner + pet info
+- Add/edit tasks (duration + priority at minimum)
+- Generate a daily schedule/plan based on constraints and priorities
+- Display the plan clearly (and ideally explain the reasoning)
+- Include tests for the most important scheduling behaviors
+
 ---
 
 ## ✨ Features

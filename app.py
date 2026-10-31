@@ -11,9 +11,61 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
     
     /* Global Styles */
-    html, body, [data-testid="stAppViewContainer"] {
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         font-family: 'Outfit', sans-serif;
-        background-color: #F8F9FD;
+        background-color: #F8F9FD !important;
+        color: #1A1A2E !important;
+    }
+    
+    /* Global Typography & Headings */
+    h1, h2, h3, h4, h5, h6,
+    [data-testid="stHeadingWithActionElements"] h1,
+    [data-testid="stHeadingWithActionElements"] h2,
+    [data-testid="stHeadingWithActionElements"] h3,
+    [data-testid="stHeadingWithActionElements"] h4,
+    [data-testid="stHeadingWithActionElements"] h5 {
+        color: #1A1A2E !important;
+        font-family: 'Outfit', sans-serif !important;
+    }
+
+    /* Widget Labels (inputs, selectboxes, number inputs) */
+    label,
+    [data-testid="stWidgetLabel"] label,
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] span {
+        color: #1A1A2E !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+    }
+
+    /* Input & Select Box styling */
+    div[data-baseweb="input"],
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E0 !important;
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="input"] input,
+    div[data-baseweb="select"] div,
+    div[data-baseweb="select"] span {
+        color: #1A1A2E !important;
+    }
+
+    /* General Markdown and Text */
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMarkdownContainer"] em,
+    [data-testid="stMarkdownContainer"] strong {
+        color: #1A1A2E !important;
+    }
+
+    /* Metrics */
+    [data-testid="stMetricLabel"] p {
+        color: #4A5568 !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stMetricValue"] div {
+        color: #1A1A2E !important;
     }
     
     /* Header styling */
@@ -28,7 +80,7 @@ st.markdown(
     
     .stSubheader {
         font-weight: 600;
-        color: #1A1A2E;
+        color: #1A1A2E !important;
     }
     
     /* Cards and Containers */
@@ -73,7 +125,7 @@ st.markdown(
     
     .time-slot {
         font-weight: 700;
-        color: #1A1A2E;
+        color: #1A1A2E !important;
         min-width: 110px;
         font-size: 1.05rem;
         display: flex;
@@ -89,16 +141,20 @@ st.markdown(
     .task-title {
         font-weight: 600;
         font-size: 1.1rem;
-        color: #2D3748;
+        color: #2D3748 !important;
         margin: 0;
     }
     
     .task-meta {
         font-size: 0.85rem;
-        color: #718096;
+        color: #718096 !important;
         margin-top: 4px;
         display: flex;
         gap: 12px;
+    }
+
+    .task-meta span {
+        color: #718096 !important;
     }
     
     .badge {
@@ -109,14 +165,14 @@ st.markdown(
         text-transform: uppercase;
     }
     
-    .badge-high { background-color: #FFF5F5; color: #E53E3E; }
-    .badge-medium { background-color: #FFFDF0; color: #D69E2E; }
-    .badge-low { background-color: #F0FFF4; color: #38A169; }
+    .badge-high { background-color: #FFF5F5 !important; color: #E53E3E !important; }
+    .badge-medium { background-color: #FFFDF0 !important; color: #D69E2E !important; }
+    .badge-low { background-color: #F0FFF4 !important; color: #38A169 !important; }
     
     /* Styled buttons */
     div.stButton > button:first-child {
-        background: linear-gradient(135deg, #4D96FF 0%, #6BCB77 100%);
-        color: white;
+        background: linear-gradient(135deg, #4D96FF 0%, #6BCB77 100%) !important;
+        color: white !important;
         border: none;
         border-radius: 8px;
         padding: 10px 24px;
@@ -130,6 +186,10 @@ st.markdown(
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(77, 150, 255, 0.3);
     }
+
+    div.stButton > button:first-child p {
+        color: white !important;
+    }
     
     .reason-box {
         background-color: #F7FAFC;
@@ -138,7 +198,7 @@ st.markdown(
         border-left: 4px solid #CBD5E0;
         font-family: monospace;
         font-size: 0.9rem;
-        color: #4A5568;
+        color: #4A5568 !important;
         white-space: pre-wrap;
     }
     </style>
@@ -410,7 +470,7 @@ with col_right:
             
             # Metrics Row
             m_col1, m_col2, m_col3 = st.columns(3)
-            m_col1.metric("Scheduled Tasks", f"{len(plan)} / {len(filtered_indices_and_tasks)}")
+            m_col1.metric("Scheduled Tasks", f"{len(plan)} / {len(sorted_tasks)}")
             m_col2.metric("Scheduled Duration", f"{total_scheduled_time} mins")
             m_col3.metric("Available Time Limit", f"{st.session_state.owner.available_time_minutes} mins")
             
@@ -421,7 +481,7 @@ with col_right:
             # Display Plan Timeline
             if plan:
                 st.markdown("### ⏰ Daily Timeline")
-                st.markdown('<div class="timeline-container">', unsafe_allow_html=True)
+                timeline_cards = []
                 for item in plan:
                     # Select icons based on category
                     category_icons = {
@@ -441,27 +501,25 @@ with col_right:
                     rec_badge_text = f"🔄 {item['recurrence'].capitalize()}" if item.get("recurrence") and item["recurrence"] != "none" else ""
                     rec_badge_html = f"<span>{rec_badge_text}</span>" if rec_badge_text else ""
                     
-                    st.markdown(
-                        f"""
-                        <div class="timeline-item {time_class}">
-                            <div class="time-slot">
-                                ⏱️ {item["start_time"]} - {item["end_time"]}
-                            </div>
-                            <div class="task-details">
-                                <p class="task-title">{icon} {item["title"]}</p>
-                                <div class="task-meta">
-                                    <span>⏳ {item["duration_minutes"]} mins</span>
-                                    <span>📂 {item["category"].capitalize()}</span>
-                                    <span class="badge badge-{p_name}">{item["priority"]} Priority</span>
-                                    <span>{pet_badge_text}</span>
-                                    {rec_badge_html}
-                                </div>
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
+                    card_html = (
+                        f'<div class="timeline-item {time_class}">'
+                        f'<div class="time-slot">⏱️ {item["start_time"]} - {item["end_time"]}</div>'
+                        f'<div class="task-details">'
+                        f'<p class="task-title">{icon} {item["title"]}</p>'
+                        f'<div class="task-meta">'
+                        f'<span>⏳ {item["duration_minutes"]} mins</span>'
+                        f'<span>📂 {item["category"].capitalize()}</span>'
+                        f'<span class="badge badge-{p_name}">{item["priority"]} Priority</span>'
+                        f'<span>{pet_badge_text}</span>'
+                        f'{rec_badge_html}'
+                        f'</div>'
+                        f'</div>'
+                        f'</div>'
                     )
-                st.markdown('</div>', unsafe_allow_html=True)
+                    timeline_cards.append(card_html)
+                
+                timeline_html = f'<div class="timeline-container">{"".join(timeline_cards)}</div>'
+                st.markdown(timeline_html, unsafe_allow_html=True)
             else:
                 st.warning("No tasks could be scheduled within your available time limit!")
             
