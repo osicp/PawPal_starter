@@ -146,24 +146,23 @@ One key tradeoff is that the scheduler uses a **First-Fit Greedy Placement strat
 
 **b. Confidence**
 
-I am very confident that my scheduler works correctly. The comprehensive test suite (13 tests) covers a wide range of scenarios, including edge cases and boundary conditions. The scheduler's logic is sound, and the tests have verified its behavior under various conditions. The UI and CLI also provide visual feedback and logs that help users understand how the scheduler is making decisions, further increasing confidence in its reliability.
+I am very confident that my scheduler works correctly. The comprehensive test suite (16 tests) covers a wide range of scenarios, including edge cases and boundary conditions. The scheduler's logic is sound, and the tests have verified its behavior under various conditions. The UI and CLI also provide visual feedback and logs that help users understand how the scheduler is making decisions, further increasing confidence in its reliability.
 
-- What edge cases would you test next if you had more time?
 If I had more time, I would test the following additional edge cases:
 
-Time Zone Support: Test how the scheduler handles tasks across different time zones.
+- Time Zone Support: Test how the scheduler handles tasks across different time zones.
 
-Recurring Task Logic: Test recurring tasks with more complex intervals (e.g., every 3 days, every 2 weeks).
+- Recurring Task Logic: Test recurring tasks with more complex intervals (e.g., every 3 days, every 2 weeks).
 
-Partial Day Availability: Test scenarios where the owner has very limited available time (e.g., only 30 minutes).
+- Partial Day Availability: Test scenarios where the owner has very limited available time (e.g., only 30 minutes).
 
-Large Task Sets: Test with a very large number of tasks (100+) to ensure scalability.
+- Large Task Sets: Test with a very large number of tasks (100+) to ensure scalability.
 
-Different Pet Combinations: Test with multiple pets having different care needs and schedules.
+- Different Pet Combinations: Test with multiple pets having different care needs and schedules.
 
-Invalid Inputs: Test how the scheduler handles invalid inputs (e.g., negative durations, invalid time formats).
+- Invalid Inputs: Test how the scheduler handles invalid inputs (e.g., negative durations, invalid time formats).
 
-Concurrent Access: Test how the scheduler behaves in a multi-user or concurrent access scenario.
+- Concurrent Access: Test how the scheduler behaves in a multi-user or concurrent access scenario.
 
 ---
 

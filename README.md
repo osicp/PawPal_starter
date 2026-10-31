@@ -98,7 +98,7 @@ python3 main.py
 
 ## 🧪 Testing PawPal+
 
-To run the automated test suite of 13 tests (covering edge cases like boundary conflicts, tie-breakers, and date rollovers):
+To run the automated test suite of 16 tests (covering edge cases like boundary conflicts, tie-breakers, and date rollovers):
 
 ```bash
 PYTHONPATH=. .venv/bin/pytest
@@ -106,15 +106,31 @@ PYTHONPATH=. .venv/bin/pytest
 
 ### Sample Test Output:
 ```text
-============================= test session starts ==============================
-platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0
+=========================== test session starts ============================
+platform darwin -- Python 3.13.9, pytest-8.3.4, pluggy-1.5.0 -- /opt/anaconda3/bin/python
+cachedir: .pytest_cache
 rootdir: /Users/wizofoz/Documents/FAU/2026-2 Fall/CODEPATH_AI01_Foundation/WEEK3/ai110-module2show-pawpal-starter
-plugins: anyio-4.14.1
-collected 13 items
+plugins: anyio-4.12.1
+collected 16 items                                                         
 
-tests/test_pawpal.py .............                                       [100%]
+tests/test_pawpal.py::test_owner_pet_creation PASSED                 [  6%]
+tests/test_pawpal.py::test_priority_timeofday_from_str PASSED        [ 12%]
+tests/test_pawpal.py::test_task_status_update PASSED                 [ 18%]
+tests/test_pawpal.py::test_scheduler_task_addition PASSED            [ 25%]
+tests/test_pawpal.py::test_scheduler_greedy_time_constraint PASSED   [ 31%]
+tests/test_pawpal.py::test_task_time_parsing PASSED                  [ 37%]
+tests/test_pawpal.py::test_conflict_detection PASSED                 [ 43%]
+tests/test_pawpal.py::test_filtering_by_pet_and_status PASSED        [ 50%]
+tests/test_pawpal.py::test_interval_gap_filling PASSED               [ 56%]
+tests/test_pawpal.py::test_recurring_task_auto_spawning PASSED       [ 62%]
+tests/test_pawpal.py::test_sorting_correctness_suite PASSED          [ 68%]
+tests/test_pawpal.py::test_recurrence_logic_suite PASSED             [ 75%]
+tests/test_pawpal.py::test_conflict_detection_suite PASSED           [ 81%]
+tests/test_pawpal.py::test_zero_and_constrained_budget_edge_cases PASSED [ 87%]
+tests/test_pawpal.py::test_time_fragmentation_edge_case PASSED       [ 93%]
+tests/test_pawpal.py::test_fallback_window_edge_case PASSED          [100%]
 
-============================== 13 passed in 0.03s ==============================
+============================ 16 passed in 0.03s ============================
 ```
 
 ---

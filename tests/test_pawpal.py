@@ -313,3 +313,81 @@ def test_conflict_detection_suite():
     assert len(conflicts_nested) == 1
     assert conflicts_nested[0]["task1"] == t_a
     assert conflicts_nested[0]["task2"] == t_d
+
+def test_zero_and_constrained_budget_edge_cases():
+    """Verify scheduler behavior under zero and ultra-constrained budget limits."""
+    owner_zero = Owner(name="Sam", available_time_minutes=0)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner_zero)
+    task = Task(title="Walk", duration_minutes=30, priority=Priority.HIGH, category="walk")
+    
+    # 1. Zero budget
+    scheduler_zero = Scheduler(pet=pet, tasks=[task])
+    assert scheduler_zero.generate_plan() == []
+    reasoning_zero = scheduler_zero.get_reasoning()
+    assert "utilizing 0 / 0 available minutes" in reasoning_zero
+    assert "exceeds the remaining available care time of 0 minutes" in reasoning_zero
+    
+    # 2. Budget smaller than single task (e.g., 10 mins available, task is 30 mins)
+    owner_tight = Owner(name="Sam", available_time_minutes=10)
+    pet.owner = owner_tight
+    scheduler_tight = Scheduler(pet=pet, tasks=[task])
+    assert scheduler_tight.generate_plan() == []
+    assert "exceeds the remaining available care time of 10 minutes" in scheduler_tight.get_reasoning()
+
+def test_time_fragmentation_edge_case():
+    """Verify that small flexible tasks fill fragmented intervals while larger tasks skip to larger slots."""
+    owner = Owner(name="Jordan", available_time_minutes=180)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner)
+    
+    # Set up fixed appointments creating a 15-minute fragmented gap (09:00 - 09:15)
+    t_b0 = Task(title="Block 0", duration_minutes=30, priority=Priority.HIGH, category="meds", specific_time="08:00")
+    t_b1 = Task(title="Block 1", duration_minutes=30, priority=Priority.HIGH, category="meds", specific_time="08:30")
+    t_b2 = Task(title="Block 2", duration_minutes=30, priority=Priority.HIGH, category="meds", specific_time="09:15")
+    
+    # A 20-minute task cannot fit into 09:00 - 09:15, so it skips to 09:45
+    t_20m = Task(title="Task 20m", duration_minutes=20, priority=Priority.HIGH, category="enrichment", time_of_day=TimeOfDay.MORNING)
+    # A 15-minute task CAN fit into 09:00 - 09:15
+    t_15m = Task(title="Task 15m", duration_minutes=15, priority=Priority.MEDIUM, category="grooming", time_of_day=TimeOfDay.MORNING)
+    
+    scheduler = Scheduler(pet=pet, tasks=[t_b0, t_b1, t_b2, t_20m, t_15m])
+    plan = scheduler.generate_plan()
+    
+    item_15m = next(i for i in plan if i["title"] == "Task 15m")
+    item_20m = next(i for i in plan if i["title"] == "Task 20m")
+    
+    # 15m task must fit into the fragmented 09:00 - 09:15 gap
+    assert item_15m["start_time"] == "09:00"
+    assert item_15m["end_time"] == "09:15"
+    
+    # 20m task must skip the 15m fragment and be scheduled at 09:45 - 10:05
+    assert item_20m["start_time"] == "09:45"
+    assert item_20m["end_time"] == "10:05"
+
+def test_fallback_window_edge_case():
+    """Verify fallback from preferred time window to ANY daytime window, and skip on fully blocked days."""
+    owner = Owner(name="Jordan", available_time_minutes=300)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner)
+    
+    # Block the entire morning window (08:00 - 12:00 = 240 mins) with a fixed task
+    t_morning_block = Task(title="Morning Vet", duration_minutes=240, priority=Priority.HIGH, category="meds", specific_time="08:00")
+    # Morning-preferred task that cannot fit in Morning, but can fit in Afternoon fallback
+    t_morning_flex = Task(title="Morning Feeding", duration_minutes=30, priority=Priority.HIGH, category="feeding", time_of_day=TimeOfDay.MORNING)
+    
+    scheduler = Scheduler(pet=pet, tasks=[t_morning_block, t_morning_flex])
+    plan = scheduler.generate_plan()
+    
+    feed_item = next(i for i in plan if i["title"] == "Morning Feeding")
+    assert feed_item["start_time"] == "12:00"
+    assert feed_item["end_time"] == "12:30"
+    assert "could not fit in preferred morning window; scheduled in fallback slot" in scheduler.get_reasoning()
+    
+    # Case where even the fallback window is completely blocked (08:00 - 22:00 = 840 min)
+    pet.owner = Owner(name="Jordan", available_time_minutes=900)
+    t_all_day = Task(title="All Day Stay", duration_minutes=840, priority=Priority.HIGH, category="meds", specific_time="08:00")
+    t_flex_blocked = Task(title="Evening Walk", duration_minutes=30, priority=Priority.HIGH, category="walk", time_of_day=TimeOfDay.EVENING)
+    
+    scheduler_block = Scheduler(pet=pet, tasks=[t_all_day, t_flex_blocked])
+    plan_block = scheduler_block.generate_plan()
+    assert len(plan_block) == 1
+    assert "no available time gap was found during its preferred window" in scheduler_block.get_reasoning()
+
