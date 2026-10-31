@@ -264,23 +264,36 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ----------------- SESSION STATE INITIALIZATION -----------------
-if "owner" not in st.session_state:
-    st.session_state.owner = Owner(name="Jordan", available_time_minutes=60)
-
-if "pet" not in st.session_state:
-    st.session_state.pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=st.session_state.owner)
+# ----------------- SESSION STATE & PERSISTENCE INITIALIZATION -----------------
+DATA_FILE = "data.json"
 
 if "scheduler" not in st.session_state:
-    # Seed default tasks inside our Task class instances
-    default_tasks = [
-        Task(title="Morning Walk", duration_minutes=30, priority=Priority.HIGH, category="walk", time_of_day=TimeOfDay.MORNING),
-        Task(title="Breakfast Feed", duration_minutes=15, priority=Priority.HIGH, category="feeding", time_of_day=TimeOfDay.MORNING),
-        Task(title="Teeth Grooming", duration_minutes=10, priority=Priority.MEDIUM, category="grooming", time_of_day=TimeOfDay.AFTERNOON),
-        Task(title="Fetch Playtime", duration_minutes=25, priority=Priority.MEDIUM, category="enrichment", time_of_day=TimeOfDay.ANY),
-        Task(title="Brush Fur", duration_minutes=15, priority=Priority.LOW, category="grooming", time_of_day=TimeOfDay.EVENING)
-    ]
-    st.session_state.scheduler = Scheduler(pet=st.session_state.pet, tasks=default_tasks)
+    loaded_scheduler = Scheduler.from_json(DATA_FILE)
+    if loaded_scheduler:
+        st.session_state.scheduler = loaded_scheduler
+        st.session_state.owner = loaded_scheduler.owner
+        st.session_state.pet = loaded_scheduler.pet
+    else:
+        # Seed default tasks inside our Task class instances
+        default_owner = Owner(name="Jordan", available_time_minutes=60)
+        default_pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=default_owner)
+        default_tasks = [
+            Task(title="Morning Walk", duration_minutes=30, priority=Priority.HIGH, category="walk", time_of_day=TimeOfDay.MORNING),
+            Task(title="Breakfast Feed", duration_minutes=15, priority=Priority.HIGH, category="feeding", time_of_day=TimeOfDay.MORNING),
+            Task(title="Teeth Grooming", duration_minutes=10, priority=Priority.MEDIUM, category="grooming", time_of_day=TimeOfDay.AFTERNOON),
+            Task(title="Fetch Playtime", duration_minutes=25, priority=Priority.MEDIUM, category="enrichment", time_of_day=TimeOfDay.ANY),
+            Task(title="Brush Fur", duration_minutes=15, priority=Priority.LOW, category="grooming", time_of_day=TimeOfDay.EVENING)
+        ]
+        st.session_state.owner = default_owner
+        st.session_state.pet = default_pet
+        st.session_state.scheduler = Scheduler(pet=st.session_state.pet, tasks=default_tasks)
+        st.session_state.scheduler.save_to_json(DATA_FILE)
+
+if "owner" not in st.session_state:
+    st.session_state.owner = st.session_state.scheduler.owner
+
+if "pet" not in st.session_state:
+    st.session_state.pet = st.session_state.scheduler.pet
 
 TAB_DAILY = "📅 Daily Schedule & Visual Analytics"
 TAB_POOL = "📋 Task Pool & Builder"
@@ -296,9 +309,19 @@ if "plan" not in st.session_state:
 if "reasoning" not in st.session_state:
     st.session_state.reasoning = ""
 
+if "scheduling_strategy" not in st.session_state:
+    st.session_state.scheduling_strategy = "Weighted Multi-Factor Utility"
+
+STRAT_MAP = {
+    "Priority Greedy": "priority_greedy",
+    "Weighted Multi-Factor Utility": "weighted_utility",
+    "Optimal Knapsack": "optimal_knapsack"
+}
+
 # Auto-generate initial plan if not yet created and tasks exist
 if st.session_state.plan is None and st.session_state.scheduler.tasks:
-    st.session_state.plan = st.session_state.scheduler.generate_plan()
+    strat_key = STRAT_MAP.get(st.session_state.scheduling_strategy, "weighted_utility")
+    st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
     st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
 
 # ----------------- PERSISTENT EXECUTIVE TOP BAR -----------------
@@ -342,7 +365,8 @@ with top_c4:
         if not st.session_state.scheduler.tasks:
             st.warning("Please add tasks to the pool before generating the schedule.")
         else:
-            st.session_state.plan = st.session_state.scheduler.generate_plan()
+            strat_key = STRAT_MAP.get(st.session_state.scheduling_strategy, "weighted_utility")
+            st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
             st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
             st.session_state.current_tab = TAB_DAILY
             st.rerun()
@@ -390,7 +414,7 @@ if st.session_state.current_tab == TAB_DAILY:
 
     else:
         # Schedule filter controls row
-        sf_col1, sf_col2, sf_col3 = st.columns([1.2, 1.2, 1], vertical_alignment="center")
+        sf_col1, sf_col2, sf_col3, sf_col4 = st.columns([1.1, 1.0, 1.3, 0.9], vertical_alignment="center")
         
         # Get unique pet names in pool
         unique_pets = {"All"}
@@ -401,21 +425,32 @@ if st.session_state.current_tab == TAB_DAILY:
 
         with sf_col1:
             sch_pet_filter = st.selectbox(
-                "Filter Schedule by Pet",
+                "Filter by Pet",
                 ["All Pets"] + [p for p in sorted_pets if p != "All"] + (["All (Shared)"] if "All" in sorted_pets else []),
                 index=0,
                 key="sch_pet_select"
             )
         with sf_col2:
             sch_status_filter = st.selectbox(
-                "Filter Schedule by Status",
+                "Filter by Status",
                 ["All Tasks", "Pending", "Completed"],
                 index=0,
                 key="sch_status_select"
             )
         with sf_col3:
+            strategy_opts = ["Weighted Multi-Factor Utility", "Optimal Knapsack", "Priority Greedy"]
+            cur_strat_idx = strategy_opts.index(st.session_state.scheduling_strategy) if st.session_state.scheduling_strategy in strategy_opts else 0
+            sel_strategy = st.selectbox(
+                "Scheduling Strategy",
+                strategy_opts,
+                index=cur_strat_idx,
+                key="sch_strategy_select"
+            )
+            st.session_state.scheduling_strategy = sel_strategy
+
+        with sf_col4:
             st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
-            if st.button("🔄 Recalculate Plan", use_container_width=True):
+            if st.button("🔄 Recalculate", use_container_width=True):
                 gen_p_filter = "All"
                 if sch_pet_filter == "All (Shared)":
                     gen_p_filter = "All (Shared)"
@@ -428,9 +463,11 @@ if st.session_state.current_tab == TAB_DAILY:
                 elif sch_status_filter == "Completed":
                     gen_s_filter = "Completed"
 
+                strat_key = STRAT_MAP.get(st.session_state.scheduling_strategy, "weighted_utility")
                 st.session_state.plan = st.session_state.scheduler.generate_plan(
                     pet_filter=gen_p_filter,
-                    status_filter=gen_s_filter
+                    status_filter=gen_s_filter,
+                    strategy=strat_key
                 )
                 st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
                 st.rerun()
@@ -448,6 +485,7 @@ if st.session_state.current_tab == TAB_DAILY:
             total_sched_time = sum(item["duration_minutes"] for item in current_plan)
             time_limit = st.session_state.owner.available_time_minutes
             utilization = (total_sched_time / time_limit * 100) if time_limit > 0 else 0
+            total_utility_pts = sum(item.get("utility_score", 0.0) for item in current_plan)
 
             # Filter candidate pool count
             pool_candidates = st.session_state.scheduler.filter_tasks(
@@ -456,10 +494,11 @@ if st.session_state.current_tab == TAB_DAILY:
             )
 
             # Metric Cards
-            m1, m2, m3 = st.columns(3)
+            m1, m2, m3, m4 = st.columns(4)
             m1.metric("Scheduled Tasks", f"{len(current_plan)} / {len(pool_candidates)}")
             m2.metric("Scheduled Time", f"{total_sched_time}m")
             m3.metric("Available Budget", f"{time_limit}m")
+            m4.metric("Care Utility Score", f"{total_utility_pts:.1f} pts")
 
             # Progress Bar
             st.progress(min(utilization / 100.0, 1.0))
@@ -568,6 +607,7 @@ if st.session_state.current_tab == TAB_DAILY:
                     pet_badge_text = f"🐾 {item['pet_name']}" if item.get("pet_name") and item["pet_name"] != "All" else "🐾 All Pets"
                     rec_badge_text = f"🔄 {item['recurrence'].capitalize()}" if item.get("recurrence") and item["recurrence"] != "none" else ""
                     rec_badge_html = f"<span>{rec_badge_text}</span>" if rec_badge_text else ""
+                    util_badge_html = f'<span class="badge" style="background:#EBF8FF !important; color:#2B6CB0 !important;">⭐ {item["utility_score"]} pts ({item["utility_density"]}/m)</span>' if item.get("utility_score") is not None else ""
                     
                     card_html = (
                         f'<div class="timeline-item {time_class}">'
@@ -578,6 +618,7 @@ if st.session_state.current_tab == TAB_DAILY:
                         f'<span>⏳ {item["duration_minutes"]} mins</span>'
                         f'<span>📂 {item["category"].capitalize()}</span>'
                         f'<span class="badge badge-{p_name}">{item["priority"]} Priority</span>'
+                        f'{util_badge_html}'
                         f'<span>{pet_badge_text}</span>'
                         f'{rec_badge_html}'
                         f'</div>'
@@ -665,8 +706,10 @@ elif st.session_state.current_tab == TAB_POOL:
                                 recurrence=recurrence
                             )
                             st.session_state.scheduler.add_task(new_task)
-                            # Regenerate plan with new task
-                            st.session_state.plan = st.session_state.scheduler.generate_plan()
+                            st.session_state.scheduler.save_to_json(DATA_FILE)
+                            # Regenerate plan with new task using selected strategy
+                            strat_key = STRAT_MAP.get(st.session_state.get("scheduling_strategy", "Weighted Multi-Factor Utility"), "weighted_utility")
+                            st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
                             st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
                             st.success(f"Added task: '{task_title}'!")
                             st.rerun()
@@ -678,6 +721,7 @@ elif st.session_state.current_tab == TAB_POOL:
                     st.session_state.scheduler.tasks = []
                     st.session_state.plan = []
                     st.session_state.reasoning = ""
+                    st.session_state.scheduler.save_to_json(DATA_FILE)
                     st.info("Cleared all tasks.")
                     st.rerun()
 
@@ -688,6 +732,8 @@ elif st.session_state.current_tab == TAB_POOL:
                         if t.recurrence != "none" and t.is_completed:
                             t.is_completed = False
                             reset_count += 1
+                    if reset_count > 0:
+                        st.session_state.scheduler.save_to_json(DATA_FILE)
                     st.success(f"Reset {reset_count} completed recurring tasks!")
                     st.rerun()
 
@@ -742,6 +788,9 @@ elif st.session_state.current_tab == TAB_POOL:
                         "Pet": t.pet_name,
                         "Duration (min)": t.duration_minutes,
                         "Priority": t.priority.name,
+                        "Category": t.category.capitalize(),
+                        "Utility Score": t.calculate_utility_score(),
+                        "Density (pts/m)": t.get_utility_density(),
                         "Time Preference": f"{t.specific_time}" if t.specific_time else f"{t.time_of_day.value.capitalize()}",
                         "Recurrence": t.recurrence.capitalize(),
                         "Status": "Completed" if t.is_completed else "Pending"
@@ -755,7 +804,7 @@ elif st.session_state.current_tab == TAB_POOL:
                 except ValueError:
                     continue
 
-                t_col_check, t_col_desc = st.columns([0.08, 0.92])
+                t_col_check, t_col_desc, t_col_del = st.columns([0.08, 0.84, 0.08])
                 with t_col_check:
                     is_checked = st.checkbox(f"Complete {t.title}", value=t.is_completed, key=f"check_pool_{original_idx}", label_visibility="collapsed")
                     if is_checked != t.is_completed:
@@ -763,7 +812,9 @@ elif st.session_state.current_tab == TAB_POOL:
                             st.session_state.scheduler.mark_task_complete(t)
                         else:
                             t.update_status(False)
-                        st.session_state.plan = st.session_state.scheduler.generate_plan()
+                        st.session_state.scheduler.save_to_json(DATA_FILE)
+                        strat_key = STRAT_MAP.get(st.session_state.get("scheduling_strategy", "Weighted Multi-Factor Utility"), "weighted_utility")
+                        st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
                         st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
                         st.rerun()
 
@@ -776,6 +827,15 @@ elif st.session_state.current_tab == TAB_POOL:
                         st.success(f"**{t.title}** ({t.duration_minutes}m) — `{t.priority.name}` — {time_str}{pet_badge}{rec_badge} (Completed)")
                     else:
                         st.info(f"**{t.title}** ({t.duration_minutes}m) — `{t.priority.name}` — {time_str}{pet_badge}{rec_badge}")
+
+                with t_col_del:
+                    if st.button("🗑️", key=f"del_task_{original_idx}", help=f"Delete '{t.title}'"):
+                        st.session_state.scheduler.tasks.remove(t)
+                        st.session_state.scheduler.save_to_json(DATA_FILE)
+                        strat_key = STRAT_MAP.get(st.session_state.get("scheduling_strategy", "Weighted Multi-Factor Utility"), "weighted_utility")
+                        st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
+                        st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
+                        st.rerun()
         else:
             st.info("No tasks matching current filters.")
 
@@ -800,8 +860,14 @@ elif st.session_state.current_tab == TAB_SETTINGS:
                 help="Maximum minutes you can dedicate to pet care today."
             )
             
-            st.session_state.owner.name = owner_name
-            st.session_state.owner.available_time_minutes = available_time
+            if (owner_name != st.session_state.owner.name or 
+                available_time != st.session_state.owner.available_time_minutes):
+                st.session_state.owner.name = owner_name
+                st.session_state.owner.available_time_minutes = available_time
+                st.session_state.scheduler.save_to_json(DATA_FILE)
+                strat_key = STRAT_MAP.get(st.session_state.get("scheduling_strategy", "Weighted Multi-Factor Utility"), "weighted_utility")
+                st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
+                st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
 
     with set_c2:
         st.markdown("#### Primary Pet Details")
@@ -815,12 +881,43 @@ elif st.session_state.current_tab == TAB_SETTINGS:
             breed = st.text_input("Breed", value=st.session_state.pet.breed)
             age = st.number_input("Age (years)", min_value=0, max_value=30, value=st.session_state.pet.age, step=1)
             
-            st.session_state.pet.name = pet_name
-            st.session_state.pet.species = species
-            st.session_state.pet.breed = breed
-            st.session_state.pet.age = age
+            if (pet_name != st.session_state.pet.name or
+                species != st.session_state.pet.species or
+                breed != st.session_state.pet.breed or
+                age != st.session_state.pet.age):
+                st.session_state.pet.name = pet_name
+                st.session_state.pet.species = species
+                st.session_state.pet.breed = breed
+                st.session_state.pet.age = age
+                st.session_state.scheduler.save_to_json(DATA_FILE)
 
-    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+    
+    # Storage & Persistence Management
+    st.markdown("#### 💾 Storage & Data Persistence")
+    persist_c1, persist_c2, persist_c3 = st.columns([1, 1, 1.2])
+    with persist_c1:
+        if st.button("💾 Force Save to data.json", use_container_width=True):
+            if st.session_state.scheduler.save_to_json(DATA_FILE):
+                st.success("Successfully persisted current state to data.json!")
+            else:
+                st.error("Failed to save to data.json.")
+    with persist_c2:
+        if st.button("📥 Reload from data.json", use_container_width=True):
+            if st.session_state.scheduler.load_from_json(DATA_FILE):
+                st.session_state.owner = st.session_state.scheduler.owner
+                st.session_state.pet = st.session_state.scheduler.pet
+                strat_key = STRAT_MAP.get(st.session_state.get("scheduling_strategy", "Weighted Multi-Factor Utility"), "weighted_utility")
+                st.session_state.plan = st.session_state.scheduler.generate_plan(strategy=strat_key)
+                st.session_state.reasoning = st.session_state.scheduler.get_reasoning()
+                st.success("Reloaded state from data.json!")
+                st.rerun()
+            else:
+                st.warning("Could not reload data.json (missing or corrupt).")
+    with persist_c3:
+        st.caption(f"📁 Local storage file: `{DATA_FILE}` (Atomic write protected)")
+
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
     st.markdown("#### Active Configuration Preview")
     prev_col1, prev_col2 = st.columns(2)
     with prev_col1:

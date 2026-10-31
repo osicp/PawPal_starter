@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "owner": {
+    "name": "Jordan",
+    "available_time_minutes": 60,
+    "preferences": {}
+  },
+  "pet": {
+    "name": "Mochi",
+    "species": "Cat",
+    "breed": "Ragdoll",
+    "age": 2
+  },
+  "tasks": [
+    {
+      "title": "Morning Walk",
+      "duration_minutes": 30,
+      "priority": "HIGH",
+      "category": "walk",
+      "time_of_day": "morning",
+      "is_completed": false,
+      "specific_time": null,
+      "pet_name": "All",
+      "recurrence": "none",
+      "due_date": null
+    },
+    {
+      "title": "Breakfast Feed",
+      "duration_minutes": 15,
+      "priority": "HIGH",
+      "category": "feeding",
+      "time_of_day": "morning",
+      "is_completed": false,
+      "specific_time": null,
+      "pet_name": "All",
+      "recurrence": "none",
+      "due_date": null
+    },
+    {
+      "title": "Teeth Grooming",
+      "duration_minutes": 10,
+      "priority": "MEDIUM",
+      "category": "grooming",
+      "time_of_day": "afternoon",
+      "is_completed": false,
+      "specific_time": null,
+      "pet_name": "All",
+      "recurrence": "none",
+      "due_date": null
+    },
+    {
+      "title": "Fetch Playtime",
+      "duration_minutes": 25,
+      "priority": "MEDIUM",
+      "category": "enrichment",
+      "time_of_day": "any",
+      "is_completed": false,
+      "specific_time": null,
+      "pet_name": "All",
+      "recurrence": "none",
+      "due_date": null
+    },
+    {
+      "title": "Brush Fur",
+      "duration_minutes": 15,
+      "priority": "LOW",
+      "category": "grooming",
+      "time_of_day": "evening",
+      "is_completed": false,
+      "specific_time": null,
+      "pet_name": "All",
+      "recurrence": "none",
+      "due_date": null
+    }
+  ]
+}

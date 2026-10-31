@@ -1,4 +1,7 @@
 import pytest
+import json
+from datetime import date
+from pathlib import Path
 from pawpal_system import Owner, Pet, Task, Scheduler, Priority, TimeOfDay
 
 def test_owner_pet_creation():
@@ -390,4 +393,404 @@ def test_fallback_window_edge_case():
     plan_block = scheduler_block.generate_plan()
     assert len(plan_block) == 1
     assert "no available time gap was found during its preferred window" in scheduler_block.get_reasoning()
+
+def test_multi_factor_utility_scoring():
+    """Verify that utility score and density formulas correctly combine priority, category necessity, and recurrence."""
+    # 1. High priority daily medication: (3.0 * 3.5) + 0.5 = 11.0 points
+    t_meds = Task(title="Daily Meds", duration_minutes=10, priority=Priority.HIGH, category="meds", recurrence="daily")
+    assert t_meds.calculate_utility_score() == 11.0
+    assert t_meds.get_utility_density() == 1.100
+
+    # 2. Medium priority weekly grooming: (2.0 * 1.5) + 0.2 = 3.2 points
+    t_groom = Task(title="Weekly Groom", duration_minutes=30, priority=Priority.MEDIUM, category="grooming", recurrence="weekly")
+    assert t_groom.calculate_utility_score() == 3.2
+    assert t_groom.get_utility_density() == round(3.2 / 30, 3)
+
+    # 3. Custom category weight override
+    t_custom = Task(title="Agility Training", duration_minutes=20, priority=Priority.HIGH, category="enrichment")
+    assert t_custom.calculate_utility_score(custom_weights={"enrichment": 5.0}) == 15.0
+
+def test_weighted_utility_density_strategy():
+    """Verify that weighted utility strategy packs high-density essential tasks over long lower-density tasks."""
+    owner = Owner(name="Jordan", available_time_minutes=60)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner)
+
+    # Walk: 45 min, Priority HIGH, category walk -> Score: 7.5, Density: 0.167/min
+    t_walk = Task(title="Long Walk", duration_minutes=45, priority=Priority.HIGH, category="walk")
+    # Feed: 15 min, Priority HIGH, category feeding, daily -> Score: 9.5, Density: 0.633/min
+    t_feed = Task(title="Breakfast Feed", duration_minutes=15, priority=Priority.HIGH, category="feeding", recurrence="daily")
+    # Meds: 10 min, Priority HIGH, category meds, daily -> Score: 11.0, Density: 1.100/min
+    t_meds = Task(title="Morning Meds", duration_minutes=10, priority=Priority.HIGH, category="meds", recurrence="daily")
+    # Brush: 15 min, Priority MEDIUM, category grooming, weekly -> Score: 3.2, Density: 0.213/min
+    t_brush = Task(title="Teeth Brush", duration_minutes=15, priority=Priority.MEDIUM, category="grooming", recurrence="weekly")
+
+    # Greedy Strategy: Takes Long Walk (45m) + Feed (15m) = 60m; drops critical Meds (10m) because 45+15+10 > 60!
+    s_greedy = Scheduler(pet=pet, tasks=[t_walk, t_feed, t_meds, t_brush])
+    p_greedy = s_greedy.generate_plan(strategy="priority_greedy")
+    greedy_titles = [x["title"] for x in p_greedy]
+    assert "Long Walk" in greedy_titles
+    assert "Morning Meds" not in greedy_titles
+
+    # Weighted Utility Strategy: Orders by Value Density (Meds -> Feed -> Brush -> Walk)
+    # Schedules Meds (10m) + Feed (15m) + Brush (15m) = 40m, total utility 23.7 pts!
+    s_weighted = Scheduler(pet=pet, tasks=[t_walk, t_feed, t_meds, t_brush])
+    p_weighted = s_weighted.generate_plan(strategy="weighted_utility")
+    weighted_titles = [x["title"] for x in p_weighted]
+    assert "Morning Meds" in weighted_titles
+    assert "Breakfast Feed" in weighted_titles
+    assert "Teeth Brush" in weighted_titles
+    assert "Long Walk" not in weighted_titles
+    assert "Total Care Utility Score: 23.7 pts" in s_weighted.get_reasoning()
+
+def test_optimal_knapsack_maximization():
+    """Verify that 0/1 knapsack dynamic programming selects the exact global utility-maximizing bundle."""
+    owner = Owner(name="Jordan", available_time_minutes=60)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner)
+
+    t_walk = Task(title="Long Walk", duration_minutes=45, priority=Priority.HIGH, category="walk")
+    t_feed = Task(title="Breakfast Feed", duration_minutes=15, priority=Priority.HIGH, category="feeding", recurrence="daily")
+    t_meds = Task(title="Morning Meds", duration_minutes=10, priority=Priority.HIGH, category="meds", recurrence="daily")
+    t_brush = Task(title="Teeth Brush", duration_minutes=15, priority=Priority.MEDIUM, category="grooming", recurrence="weekly")
+
+    s_knapsack = Scheduler(pet=pet, tasks=[t_walk, t_feed, t_meds, t_brush])
+    p_knapsack = s_knapsack.generate_plan(strategy="optimal_knapsack")
+    knapsack_titles = [x["title"] for x in p_knapsack]
+
+    assert "Morning Meds" in knapsack_titles
+    assert "Breakfast Feed" in knapsack_titles
+    assert "Teeth Brush" in knapsack_titles
+    assert "Long Walk" not in knapsack_titles
+
+    reasoning = s_knapsack.get_reasoning()
+    assert "0/1 Knapsack identified 3 optimal tasks maximizing care utility (23.7 pts)" in reasoning
+    assert "Excluded 'Long Walk'" in reasoning
+
+def test_sort_tasks_by_utility():
+    """Verify that Scheduler.sort_tasks_by_time correctly supports by_utility sorting."""
+    owner = Owner(name="Jordan", available_time_minutes=120)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner)
+
+    t_low_density = Task(title="Low Density Walk", duration_minutes=60, priority=Priority.HIGH, category="walk") # 7.5 / 60 = 0.125
+    t_high_density = Task(title="High Density Meds", duration_minutes=10, priority=Priority.HIGH, category="meds", recurrence="daily") # 11.0 / 10 = 1.100
+
+    scheduler = Scheduler(pet=pet, tasks=[t_low_density, t_high_density])
+    sorted_util = scheduler.sort_tasks_by_time(by_utility=True)
+    assert sorted_util[0] == t_high_density
+    assert sorted_util[1] == t_low_density
+
+
+# ==============================================================================
+# JSON PERSISTENCE & DEFENSIVE STORAGE TESTS
+# ==============================================================================
+
+def test_json_persistence_roundtrip(tmp_path: Path):
+    """
+    Verify complete round-trip serialization and deserialization of Owner, Pet,
+    and Tasks with diverse custom types (Priority, TimeOfDay, date, specific_time).
+    """
+    data_file = tmp_path / "test_data.json"
+
+    owner = Owner(name="Alex", available_time_minutes=90, preferences={"yard_access": True, "allergies": "none"})
+    pet = Pet(name="Luna", species="Dog", breed="Husky", age=3, owner=owner)
+
+    t1 = Task(
+        title="Morning Run",
+        duration_minutes=35,
+        priority=Priority.HIGH,
+        category="walk",
+        time_of_day=TimeOfDay.MORNING,
+        is_completed=False,
+        specific_time="07:30",
+        pet_name="Luna",
+        recurrence="daily",
+        due_date=date(2026, 11, 1)
+    )
+    t2 = Task(
+        title="Brush Coat",
+        duration_minutes=20,
+        priority=Priority.MEDIUM,
+        category="grooming",
+        time_of_day=TimeOfDay.EVENING,
+        is_completed=True,
+        specific_time=None,
+        pet_name="Luna",
+        recurrence="weekly",
+        due_date=date(2026, 11, 7)
+    )
+    t3 = Task(
+        title="Puzzle Toy",
+        duration_minutes=15,
+        priority=Priority.LOW,
+        category="enrichment",
+        time_of_day=TimeOfDay.ANY,
+        is_completed=False,
+        specific_time=None,
+        pet_name="All",
+        recurrence="none",
+        due_date=None
+    )
+
+    scheduler = Scheduler(pet=pet, tasks=[t1, t2, t3])
+
+    # 1. Save to JSON
+    success = scheduler.save_to_json(data_file)
+    assert success is True
+    assert data_file.exists()
+
+    # 2. Reconstruct from JSON via classmethod
+    loaded_scheduler = Scheduler.from_json(data_file)
+    assert loaded_scheduler is not None
+
+    # Verify Owner
+    assert loaded_scheduler.owner.name == "Alex"
+    assert loaded_scheduler.owner.available_time_minutes == 90
+    assert loaded_scheduler.owner.preferences == {"yard_access": True, "allergies": "none"}
+
+    # Verify Pet
+    assert loaded_scheduler.pet.name == "Luna"
+    assert loaded_scheduler.pet.species == "Dog"
+    assert loaded_scheduler.pet.breed == "Husky"
+    assert loaded_scheduler.pet.age == 3
+    assert loaded_scheduler.pet.owner.name == "Alex"
+
+    # Verify Tasks
+    assert len(loaded_scheduler.tasks) == 3
+    lt1 = loaded_scheduler.tasks[0]
+    assert lt1.title == "Morning Run"
+    assert lt1.duration_minutes == 35
+    assert lt1.priority == Priority.HIGH
+    assert lt1.category == "walk"
+    assert lt1.time_of_day == TimeOfDay.MORNING
+    assert lt1.is_completed is False
+    assert lt1.specific_time == "07:30"
+    assert lt1.pet_name == "Luna"
+    assert lt1.recurrence == "daily"
+    assert lt1.due_date == date(2026, 11, 1)
+
+    lt2 = loaded_scheduler.tasks[1]
+    assert lt2.title == "Brush Coat"
+    assert lt2.priority == Priority.MEDIUM
+    assert lt2.recurrence == "weekly"
+    assert lt2.is_completed is True
+    assert lt2.due_date == date(2026, 11, 7)
+
+    lt3 = loaded_scheduler.tasks[2]
+    assert lt3.title == "Puzzle Toy"
+    assert lt3.priority == Priority.LOW
+    assert lt3.due_date is None
+
+    # 3. Test load_from_json mutating an existing Scheduler instance
+    dummy_owner = Owner(name="Placeholder", available_time_minutes=30)
+    dummy_pet = Pet(name="Ghost", species="Cat", breed="Unknown", age=1, owner=dummy_owner)
+    existing_scheduler = Scheduler(pet=dummy_pet, tasks=[])
+    
+    reload_success = existing_scheduler.load_from_json(data_file)
+    assert reload_success is True
+    assert existing_scheduler.owner.name == "Alex"
+    assert existing_scheduler.pet.name == "Luna"
+    assert len(existing_scheduler.tasks) == 3
+
+
+def test_json_persistence_atomic_write(tmp_path: Path):
+    """
+    Verify that atomic writes safely create parent folders, replace existing files,
+    and never leave orphan .tmp files behind on disk.
+    """
+    nested_dir = tmp_path / "deep" / "storage"
+    target_file = nested_dir / "pawpal_data.json"
+    temp_file = target_file.with_suffix(f"{target_file.suffix}.tmp")
+
+    owner = Owner(name="Jordan", available_time_minutes=60)
+    pet = Pet(name="Mochi", species="Cat", breed="Ragdoll", age=2, owner=owner)
+    scheduler = Scheduler(pet=pet, tasks=[])
+
+    # First write creates directory and file
+    assert scheduler.save_to_json(target_file) is True
+    assert target_file.exists()
+    assert not temp_file.exists(), "Temporary file was not cleaned up after atomic write"
+
+    # Second write overwrites cleanly without corruption
+    scheduler.tasks.append(Task(title="Quick Feed", duration_minutes=10, priority=Priority.HIGH, category="feeding"))
+    assert scheduler.save_to_json(target_file) is True
+    assert target_file.exists()
+    assert not temp_file.exists()
+
+    reloaded = Scheduler.from_json(target_file)
+    assert reloaded is not None
+    assert len(reloaded.tasks) == 1
+    assert reloaded.tasks[0].title == "Quick Feed"
+
+
+def test_json_persistence_missing_file(tmp_path: Path):
+    """
+    Verify graceful degradation (no crash, returns None or False) when target file does not exist.
+    """
+    missing_path = tmp_path / "non_existent_file.json"
+
+    # from_json should return None
+    result = Scheduler.from_json(missing_path)
+    assert result is None
+
+    # load_from_json should return False and keep existing state intact
+    owner = Owner(name="Sam", available_time_minutes=45)
+    pet = Pet(name="Pip", species="Bird", breed="Parakeet", age=1, owner=owner)
+    original_task = Task(title="Clean Cage", duration_minutes=15, priority=Priority.MEDIUM, category="grooming")
+    scheduler = Scheduler(pet=pet, tasks=[original_task])
+
+    loaded = scheduler.load_from_json(missing_path)
+    assert loaded is False
+    assert scheduler.owner.name == "Sam"
+    assert len(scheduler.tasks) == 1
+    assert scheduler.tasks[0].title == "Clean Cage"
+
+
+def test_json_persistence_corrupt_file(tmp_path: Path):
+    """
+    Verify defensive error trapping against truncated JSON, syntax errors,
+    empty files, and non-dict root JSON payloads.
+    """
+    # 1. Truncated malformed JSON syntax
+    corrupt_file = tmp_path / "corrupt.json"
+    corrupt_file.write_text('{"owner": {"name": "Broken", "avail', encoding="utf-8")
+
+    assert Scheduler.from_json(corrupt_file) is None
+
+    owner = Owner(name="Safe", available_time_minutes=30)
+    pet = Pet(name="SafePet", species="Dog", breed="Lab", age=2, owner=owner)
+    scheduler = Scheduler(pet=pet, tasks=[])
+    assert scheduler.load_from_json(corrupt_file) is False
+
+    # 2. Empty file (0 bytes)
+    empty_file = tmp_path / "empty.json"
+    empty_file.write_text("", encoding="utf-8")
+    assert Scheduler.from_json(empty_file) is None
+    assert scheduler.load_from_json(empty_file) is False
+
+    # 3. Non-dictionary JSON root (e.g., list or integer)
+    list_file = tmp_path / "list.json"
+    list_file.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+    assert Scheduler.from_json(list_file) is None
+    assert scheduler.load_from_json(list_file) is False
+
+
+def test_json_persistence_schema_drift_and_record_isolation(tmp_path: Path):
+    """
+    Verify per-record error isolation: a single malformed task record (e.g. invalid duration)
+    does NOT crash or invalidate the rest of the file. Valid tasks and profiles are preserved.
+    Also verifies unrecognized future fields are ignored safely.
+    """
+    data_file = tmp_path / "schema_drift.json"
+
+    payload = {
+        "schema_version": "2.1.0-future",
+        "unknown_extra_meta": {"cloud_sync": True, "token": "xyz123"},
+        "owner": {
+            "name": "Robin",
+            "available_time_minutes": 75,
+            "preferences": {"quiet_hours": "afternoon"},
+            "future_owner_attr": "should be ignored safely"
+        },
+        "pet": {
+            "name": "Boba",
+            "species": "Cat",
+            "breed": "Siamese",
+            "age": 4,
+            "future_pet_attr": "also ignored"
+        },
+        "tasks": [
+            {
+                "title": "Valid Morning Walk",
+                "duration_minutes": 25,
+                "priority": "HIGH",
+                "category": "walk",
+                "time_of_day": "morning",
+                "future_task_meta": 999
+            },
+            {
+                # Corrupted record: negative duration breaks Task validation
+                "title": "Corrupted Task With Bad Duration",
+                "duration_minutes": -30,
+                "priority": "HIGH",
+                "category": "meds"
+            },
+            {
+                # Corrupted record: not a dictionary
+                "invalid_structure_string"
+            },
+            {
+                "title": "Valid Evening Cuddle",
+                "duration_minutes": 15,
+                "priority": "low",
+                "category": "enrichment",
+                "time_of_day": "evening",
+                "recurrence": "daily",
+                "due_date": "invalid-date-string-that-should-fallback-to-none"
+            }
+        ]
+    }
+
+    # Write the payload with mixed valid and invalid records
+    # (Fix the non-dict set element in tasks JSON array for valid JSON syntax)
+    clean_tasks = [
+        payload["tasks"][0],
+        payload["tasks"][1],
+        "not-a-dict-item",
+        payload["tasks"][3]
+    ]
+    payload["tasks"] = clean_tasks
+
+    data_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = Scheduler.from_json(data_file)
+    assert loaded is not None
+
+    # Owner & Pet loaded safely despite extra unknown schema attributes
+    assert loaded.owner.name == "Robin"
+    assert loaded.owner.available_time_minutes == 75
+    assert loaded.pet.name == "Boba"
+    assert loaded.pet.species == "Cat"
+
+    # Tasks: Corrupted records are skipped, 2 valid records are loaded
+    assert len(loaded.tasks) == 2
+    assert loaded.tasks[0].title == "Valid Morning Walk"
+    assert loaded.tasks[0].priority == Priority.HIGH
+    assert loaded.tasks[0].duration_minutes == 25
+
+    assert loaded.tasks[1].title == "Valid Evening Cuddle"
+    assert loaded.tasks[1].priority == Priority.LOW
+    assert loaded.tasks[1].due_date is None  # Gracefully fell back from invalid date string
+
+
+def test_task_dict_serialization_defensive():
+    """Verify Task.to_dict and Task.from_dict edge cases and defensive conversions."""
+    # 1. Custom string priority case insensitivity
+    t_dict = {
+        "title": "Meds",
+        "duration_minutes": 5,
+        "priority": "  hIgH  ",
+        "category": "meds",
+        "time_of_day": "MoRnInG",
+        "due_date": "2026-12-25"
+    }
+    t = Task.from_dict(t_dict)
+    assert t.priority == Priority.HIGH
+    assert t.time_of_day == TimeOfDay.MORNING
+    assert t.due_date == date(2026, 12, 25)
+
+    # 2. Serialization matches expected schema
+    d = t.to_dict()
+    assert d["priority"] == "HIGH"
+    assert d["time_of_day"] == "morning"
+    assert d["due_date"] == "2026-12-25"
+
+    # 3. Missing optional fields get safe defaults
+    minimal_t = Task.from_dict({})
+    assert minimal_t.title == "Untitled Task"
+    assert minimal_t.duration_minutes == 15
+    assert minimal_t.priority == Priority.MEDIUM
+    assert minimal_t.time_of_day == TimeOfDay.ANY
+    assert minimal_t.due_date is None
+    assert minimal_t.is_completed is False
+
+
 

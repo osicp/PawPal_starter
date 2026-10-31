@@ -1,9 +1,28 @@
 classDiagram
+    class Priority {
+        <<enumeration>>
+        LOW = 1
+        MEDIUM = 2
+        HIGH = 3
+        +from_str(val: str)$ Priority
+    }
+
+    class TimeOfDay {
+        <<enumeration>>
+        MORNING = "morning"
+        AFTERNOON = "afternoon"
+        EVENING = "evening"
+        ANY = "any"
+        +from_str(val: str)$ TimeOfDay
+    }
+
     class Owner {
         +str name
         +int available_time_minutes
         +dict preferences
         +get_owner_details() str
+        +to_dict() dict
+        +from_dict(data: dict)$ Owner
     }
 
     class Pet {
@@ -13,6 +32,8 @@ classDiagram
         +int age
         +Owner owner
         +get_profile() str
+        +to_dict() dict
+        +from_dict(data: dict, owner: Owner)$ Pet
     }
 
     class Task {
@@ -29,6 +50,10 @@ classDiagram
         +update_status(completed: bool) Optional[Task]
         +get_start_minutes() Optional[int]
         +get_end_minutes() Optional[int]
+        +calculate_utility_score(custom_weights: dict) float
+        +get_utility_density(custom_weights: dict) float
+        +to_dict() dict
+        +from_dict(data: dict)$ Task
     }
 
     class Scheduler {
@@ -39,16 +64,19 @@ classDiagram
         +str reasoning
         +add_task(task: Task) void
         +mark_task_complete(task: Task) Optional[Task]
-        +detect_conflicts(tasks: list) list
+        +detect_conflicts(tasks: list, include_completed: bool) list
         +filter_tasks(pet_filter: str, status_filter: str, tasks: list) list
-        +sort_tasks_by_time(tasks: list) list
-        +generate_plan(pet_filter: str, status_filter: str) list
+        +sort_tasks_by_time(tasks: list, by_utility: bool) list
+        +generate_plan(pet_filter: str, status_filter: str, strategy: str) list
         +get_reasoning() str
+        +save_to_json(file_path: str) bool
+        +load_from_json(file_path: str) bool
+        +from_json(file_path: str)$ Optional[Scheduler]
     }
 
     Pet "1" --> "1" Owner : belongs to
     Scheduler "1" --> "1" Pet : schedules for
     Scheduler "1" --> "1" Owner : checks constraints of
     Scheduler "1" *-- "*" Task : organizes
-
-
+    Task "1" --> "1" Priority : has
+    Task "1" --> "1" TimeOfDay : prefers
